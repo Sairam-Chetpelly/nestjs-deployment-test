@@ -1,0 +1,55 @@
+name: Deploy NestJS to EC2
+
+on:
+  push:
+    branches:
+      - main
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '22'
+
+    - name: Deploy Project to EC2 via SCP
+      uses: appleboy/scp-action@v0.1.4
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        source: "."
+        target: ${{ secrets.PROJECT_PATH }}
+        rm: true
+        strip_components: 0
+
+    - name: Upload .env File
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          echo "${{ secrets.ENV_FILE }}" > ${{ secrets.PROJECT_PATH }}/.env
+
+    - name: Run Remote Deployment Script
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          cd ${{ secrets.PROJECT_PATH }}
+          echo "Installing dependencies..."
+          npm install
+
+          echo "Restarting nestjs-api with PM2..."
+          pm2 delete "nestjs-api" || true
+          pm2 start npm --name "nestjs-api" -- run start
+          pm2 save
+
